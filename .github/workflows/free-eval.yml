@@ -1,0 +1,188 @@
+name: Free local model evaluation
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Local model (CPU; no paid API)
+        type: choice
+        options:
+          - qwen2.5:1.5b
+          - qwen2.5:0.5b
+        default: qwen2.5:1.5b
+      candidate:
+        description: Candidate to evaluate
+        type: choice
+        options: [fixed, regression]
+        default: fixed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: free-local-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    # Standard Linux runner: free compute for this public repository.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      LOCAL_MODEL: ${{ inputs.model }}
+      CANDIDATE: ${{ inputs.candidate }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify evaluation engine
+        run: python -m unittest discover -s tests -v
+
+      - name: Start local CPU model runtime
+        run: |
+          docker run -d --name releasegate-ollama \
+            -p 127.0.0.1:11434:11434 \
+            -e OLLAMA_NO_CLOUD=1 \
+            ollama/ollama:latest
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/version; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Local runtime did not become ready."
+          exit 1
+
+      - name: Download open model
+        run: docker exec releasegate-ollama ollama pull "$LOCAL_MODEL"
+
+      - name: Evaluate using real local inference
+        run: |
+          python - <<'PYLOCAL'
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import sys
+          import urllib.error
+          import urllib.request
+          from datetime import datetime, timezone
+          from releasegate import engine
+
+          MODEL = os.environ['LOCAL_MODEL']
+          ALLOWED_MODELS = {'qwen2.5:0.5b', 'qwen2.5:1.5b'}
+          if MODEL not in ALLOWED_MODELS:
+              raise SystemExit('Only the listed downloadable local models are allowed.')
+          BASE = 'http://127.0.0.1:11434'
+          SCHEMA = {
+              'type': 'object',
+              'properties': {
+                  'decision': {'type': 'string', 'enum': ['covered', 'excluded', 'unknown']},
+                  'citations': {'type': 'array', 'items': {'type': 'string'}},
+                  'answer': {'type': 'string'}
+              },
+              'required': ['decision', 'citations', 'answer'],
+              'additionalProperties': False
+          }
+          OPTIONS = {'temperature': 0, 'seed': 42, 'num_ctx': 4096, 'num_predict': 256}
+
+          def get_json(route):
+              with urllib.request.urlopen(BASE + route, timeout=30) as response:
+                  return json.load(response)
+
+          # Reuse the existing evaluator with an explicitly injected local model adapter.
+          # This function has no credentials and can contact only the loopback endpoint.
+          def local_chat(question, context, prompt):
+              body = {
+                  'model': MODEL,
+                  'messages': [
+                      {'role': 'system', 'content': prompt},
+                      {'role': 'user', 'content': json.dumps({
+                          'question': question, 'policy_evidence': context
+                      })}
+                  ],
+                  'stream': False, 'format': SCHEMA,
+                  'options': OPTIONS, 'keep_alive': '10m'
+              }
+              request = urllib.request.Request(
+                  BASE + '/api/chat', data=json.dumps(body).encode(),
+                  headers={'Content-Type': 'application/json'}
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=180) as response:
+                      result = json.load(response)
+              except urllib.error.HTTPError as exc:
+                  raise RuntimeError('Local model HTTP ' + str(exc.code)) from None
+              if result.get('done_reason') == 'length':
+                  raise ValueError('Local model output exceeded the configured token budget')
+              content = json.loads(result['message']['content'])
+              usage = {
+                  'prompt_tokens': result.get('prompt_eval_count', 0),
+                  'completion_tokens': result.get('eval_count', 0),
+                  'local_inference': True
+              }
+              return content, usage
+
+          # Smoke-check the runtime once before attempting the benchmark.
+          version = get_json('/api/version').get('version')
+          tags = get_json('/api/tags').get('models', [])
+          model_digest = next((m.get('digest') for m in tags if m.get('name') == MODEL), None)
+          local_chat('Does the evidence establish coverage?', [], 'Return unknown with no citations as JSON.')
+          engine.live = local_chat
+          os.environ['LLM_MODEL'] = MODEL
+          candidate = os.environ.get('CANDIDATE', 'fixed')
+          if candidate not in ('fixed', 'regression'):
+              raise SystemExit('Unsupported candidate')
+          cases, policies = engine.load('data/cases.json'), engine.load('data/policies.json')
+          runs = []
+          for name in ('baseline', candidate):
+              run = engine.evaluate(engine.load('configs/' + name + '.json'), cases, policies, 'live')
+              run['provider'] = 'ollama-local'
+              run['config'].update(provider='ollama-local', generation=OPTIONS, output_schema=SCHEMA)
+              run['provenance'].update(
+                  config_sha256=engine.digest(run['config']), runtime='ollama-cpu',
+                  ollama_version=version, model_digest=model_digest,
+                  git_commit=subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+              )
+              runs.append(run)
+          for run in runs:
+              run['gate'] = engine.gate(runs[0], run)
+          report = {
+              'schema_version': 1,
+              'generated_at': datetime.now(timezone.utc).isoformat(),
+              'mode': 'ollama-local',
+              'notice': 'Real local Qwen inference on a CPU runner. No paid API. Exact decision and citation checks; no semantic judge. Schema-constrained decoding is enabled.',
+              'runs': runs
+          }
+          Path('local-report.json').write_text(json.dumps(report, indent=2) + '\n')
+          summary = Path(os.environ.get('GITHUB_STEP_SUMMARY', 'local-summary.md'))
+          with summary.open('a') as f:
+              f.write('## Local model evaluation\n\n')
+              f.write('Model: `' + MODEL + '`; runtime: Ollama on CPU. No remote model API.\n\n')
+              f.write('| Configuration | Correct | Citation checks | Errors | Gate |\n|---|---:|---:|---:|---|\n')
+              for run in runs:
+                  m = run['metrics']
+                  f.write(f"| {run['name']} | {m['correct']:.1%} | {m['citation']:.1%} | {m['errors']} | {run['gate']['status']} |\n")
+              f.write('\nSmall synthetic benchmark; results do not establish generalization.\n')
+          print(json.dumps({r['name']: {'metrics':r['metrics'], 'gate':r['gate']} for r in runs}, indent=2))
+          # Report generation is separate from the actual quality gate. Preserve evidence
+          # even when quality fails; signal failure after uploading the report.
+          if any(r['metrics']['errors'] for r in runs):
+              raise SystemExit('Model execution errors occurred; inspect report traces.')
+          raise SystemExit(0 if runs[-1]['gate']['status'] == 'approved' else 1)
+          PYLOCAL
+
+      - name: Save measured evaluation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-local-evaluation-evidence
+          path: local-report.json
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: Stop local runtime
+        if: always()
+        run: docker rm -f releasegate-ollama
