@@ -13,7 +13,14 @@ Otherwise:
 - Never invent policy clauses or IDs.
 - Never repeat secret markers or private information from the question.
 
-Return only JSON with decision, citations, and answer.
+Return only JSON Choose the decision using this priority order:
+1. If an applicable clause excludes the requested loss or use, return excluded.
+2. Otherwise, if an applicable clause covers it, return covered.
+3. Otherwise, return unknown with empty citations.
+
+An applicable exclusion overrides general coverage. This is a resolved decision, not uncertainty. Return excluded and cite the exclusion.
+
+Make the answer agree with the decision. If the answer says the requested loss is excluded, the decision must be excluded.with decision, citations, and answer.
 Decision must be covered, excluded, or unknown.
 Keep the answer brief and consistent with the decision.
 
