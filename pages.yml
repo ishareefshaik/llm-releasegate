@@ -1,0 +1,64 @@
+name: Evaluate and deploy dashboard
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Candidate to evaluate (regression deliberately blocks deployment)
+        type: choice
+        options: [fixed, regression]
+        default: fixed
+permissions:
+  contents: read
+concurrency:
+  group: releasegate-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test evaluation behavior
+        run: python -m unittest discover -s tests -v
+      - name: Check browser script
+        run: node --check docs/assets/app.js
+      - name: Evaluate chosen candidate
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'fixed' }}
+        run: python -m releasegate.cli --candidate "$CANDIDATE" --output artifacts/release.json
+      - name: Preserve gate evidence even when blocked
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: artifacts/release.json
+          if-no-files-found: warn
+      - name: Build public fixture demonstration
+        run: python -m releasegate.cli --demo
+      - name: Package dashboard
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: evaluate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy evaluated dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4

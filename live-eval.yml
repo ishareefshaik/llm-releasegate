@@ -1,0 +1,38 @@
+name: Live model evaluation (manual)
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Your provider's exact model ID
+        required: true
+        type: string
+      candidate:
+        description: Candidate configuration
+        type: choice
+        options: [fixed, regression]
+        default: fixed
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run live evaluation
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ inputs.model }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL || 'https://api.openai.com/v1' }}
+          CANDIDATE: ${{ inputs.candidate }}
+        run: python -m releasegate.cli --provider live --candidate "$CANDIDATE" --output artifacts/live-report.json
+      - name: Preserve evidence even when gate blocks
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-evaluation-evidence
+          path: artifacts/live-report.json
+          if-no-files-found: warn
