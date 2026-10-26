@@ -53,8 +53,8 @@ jobs:
           path: artifacts/release.json
           if-no-files-found: warn
 
-      - name: Generate demo report
-        run: python -m releasegate.cli --demo
+      -    - name: Validate saved report
+            run: python -m json.tool docs/report.json > /dev/null
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
