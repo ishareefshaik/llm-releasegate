@@ -1,0 +1,79 @@
+name: Evaluate and deploy dashboard
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: Candidate configuration
+        type: choice
+        options:
+          - fixed
+          - regression
+        default: fixed
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Check dashboard JavaScript
+        run: node --check docs/assets/app.js
+
+      - name: Evaluate candidate
+        env:
+          CANDIDATE: ${{ inputs.candidate || 'fixed' }}
+        run: python -m releasegate.cli --candidate "$CANDIDATE" --output artifacts/release.json
+
+      - name: Save evaluation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-evidence
+          path: artifacts/release.json
+          if-no-files-found: warn
+
+      - name: Generate demo report
+        run: python -m releasegate.cli --demo
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Package dashboard
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: evaluate
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy dashboard
+        id: deployment
+        uses: actions/deploy-pages@v4
