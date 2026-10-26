@@ -1,0 +1,6 @@
+{
+  "name": "baseline",
+  "top_k": 1,
+  "prompt": "prompts/evidence.txt",
+  "provider": "fixture"
+}

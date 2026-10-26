@@ -1,0 +1,6 @@
+{
+  "name": "regression",
+  "top_k": 3,
+  "prompt": "prompts/optimistic.txt",
+  "provider": "fixture"
+}

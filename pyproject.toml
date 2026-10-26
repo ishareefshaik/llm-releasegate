@@ -1,0 +1,9 @@
+[project]
+name = "llm-releasegate"
+version = "0.1.0"
+description = "Reproducible evaluation gates for an insurance policy assistant"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+releasegate = "releasegate.cli:main"

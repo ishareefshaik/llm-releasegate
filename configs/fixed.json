@@ -1,0 +1,6 @@
+{
+  "name": "fixed",
+  "top_k": 3,
+  "prompt": "prompts/evidence.txt",
+  "provider": "fixture"
+}

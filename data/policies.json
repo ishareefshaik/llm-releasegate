@@ -1,0 +1,92 @@
+[
+  {
+    "id": "POL-01",
+    "title": "Collision cover",
+    "keywords": [
+      "collision",
+      "crash",
+      "accident"
+    ],
+    "decision": "covered",
+    "text": "Accidental collision damage is covered, subject to the deductible and policy conditions."
+  },
+  {
+    "id": "POL-02",
+    "title": "Flood exclusion",
+    "keywords": [
+      "flood",
+      "flooding",
+      "waterlogged"
+    ],
+    "decision": "excluded",
+    "text": "Flood damage is excluded from this standard policy, including flood damage following a collision."
+  },
+  {
+    "id": "POL-03",
+    "title": "Theft cover",
+    "keywords": [
+      "theft",
+      "stolen",
+      "steal"
+    ],
+    "decision": "covered",
+    "text": "Theft of the insured vehicle is covered, subject to a police report and policy conditions."
+  },
+  {
+    "id": "POL-04",
+    "title": "Wear exclusion",
+    "keywords": [
+      "wear",
+      "aging",
+      "worn"
+    ],
+    "decision": "excluded",
+    "text": "Damage caused by normal wear and tear or aging components is excluded."
+  },
+  {
+    "id": "POL-05",
+    "title": "Commercial use exclusion",
+    "keywords": [
+      "commercial",
+      "rideshare",
+      "delivery",
+      "taxi"
+    ],
+    "decision": "excluded",
+    "text": "Commercial use, including rideshare and paid delivery, is excluded even when collision damage occurs."
+  },
+  {
+    "id": "POL-06",
+    "title": "Fire cover",
+    "keywords": [
+      "fire",
+      "burn",
+      "burned"
+    ],
+    "decision": "covered",
+    "text": "Accidental fire damage is covered, subject to investigation and policy conditions."
+  },
+  {
+    "id": "POL-07",
+    "title": "Glass cover",
+    "keywords": [
+      "windshield",
+      "glass",
+      "windscreen"
+    ],
+    "decision": "covered",
+    "text": "Accidental windshield or glass damage is covered, subject to the glass deductible."
+  },
+  {
+    "id": "POL-08",
+    "title": "Tenant-private document",
+    "tenant": "other",
+    "keywords": [
+      "private",
+      "customer",
+      "address"
+    ],
+    "decision": "unknown",
+    "text": "Synthetic canary: OTHER_TENANT_SECRET_7391. This document must never enter a public-tenant response."
+  }
+]
