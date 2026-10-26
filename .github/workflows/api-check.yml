@@ -1,0 +1,62 @@
+name: Check model API connection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Make one diagnostic request
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import sys
+          import urllib.request
+          import urllib.error
+
+          key = os.environ.get("LLM_API_KEY")
+          if not key:
+              sys.exit("LLM_API_KEY is missing or empty.")
+
+          payload = {
+              "model": "gpt-4.1-mini",
+              "messages": [
+                  {"role": "user", "content": "Reply with OK."}
+              ],
+              "max_tokens": 16
+          }
+          request = urllib.request.Request(
+              "https://api.openai.com/v1/chat/completions",
+              data=json.dumps(payload).encode(),
+              headers={
+                  "Authorization": "Bearer " + key,
+                  "Content-Type": "application/json"
+              }
+          )
+
+          try:
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  print("API connection succeeded. HTTP", response.status)
+          except urllib.error.HTTPError as exc:
+              print("HTTP status:", exc.code)
+              try:
+                  error = json.loads(exc.read()).get("error", {})
+                  for field in ("type", "code", "param"):
+                      value = error.get(field)
+                      if isinstance(value, str):
+                          print(field + ":", value[:100])
+              except (ValueError, AttributeError):
+                  print("No structured error details available.")
+              sys.exit(1)
+          PY
