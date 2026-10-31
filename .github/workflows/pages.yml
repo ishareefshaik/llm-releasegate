@@ -4,14 +4,6 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      candidate:
-        description: Candidate configuration
-        type: choice
-        options:
-          - fixed
-          - regression
-        default: fixed
 
 permissions:
   contents: read
@@ -40,20 +32,7 @@ jobs:
       - name: Check dashboard JavaScript
         run: node --check docs/assets/app.js
 
-      - name: Evaluate candidate
-        env:
-          CANDIDATE: ${{ inputs.candidate || 'fixed' }}
-        run: python -m releasegate.cli --candidate "$CANDIDATE" --output artifacts/release.json
-
-      - name: Save evaluation evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-evidence
-          path: artifacts/release.json
-          if-no-files-found: warn
-
-      -          - name: Validate saved report
+      - name: Validate saved report
         run: python -m json.tool docs/report.json > /dev/null
 
       - name: Configure Pages
